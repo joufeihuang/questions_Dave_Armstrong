@@ -1,0 +1,80 @@
+---
+title: "Jou-Fei Interaction Question"
+author: "Dave Armstrong"
+date: "08/07/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, mesage=FALSE)
+library(stargazer)
+```
+
+I will simulate a similar setup to the one you have, where $y$ is the dependent variable, $x$ is the independent variable, $d$ is the dummy variable and $z$ is another control.  I want to show you how two different situations work out.  
+
+```{r}
+set.seed(519)
+x <- runif(1000, 0, 10)
+z <- x + rnorm(1000, 0, 2*sd(x))
+d <- as.factor(sample(c(0,1), 1000, replace=TRUE))
+dat <- data.frame(x,d,z)
+```
+
+
+First, consider where there is no significant interaction. 
+
+```{r}
+set.seed(519)
+dat$yhat1 <-  x + I(d == "1") + .15*x*I(d == "1") -z 
+dat$y1 <- dat$yhat1 + rnorm(1000, 0, 2*sd(dat$yhat1))
+```
+
+We can estimate the model both ways - interaction and subset. 
+```{r}
+int.mod1 <- lm(y1 ~ x*d + z, data=dat)
+sub.mod0 <- lm(y1 ~ x + z, data=subset(dat, d == "0"))
+sub.mod1 <- lm(y1 ~ x + z, data=subset(dat, d == "1"))
+```
+
+```{r}
+stargazer(int.mod1, sub.mod0, sub.mod1, type="text")
+```
+
+From the table above, you can see that in the subset models, there are two different effects for 1.262 when $d=0$ and 1.079 when $d=1$.  Both effects are signfiicant.  However, if we wanted to test whether those two coefficients are different from each other, we would do: 
+
+$$t = \frac{b_{x[d==0]} - b_{x[d==1]}}{\sqrt{v(b_{x[d==0]}) + v(b_{x[d==1]})}} = \frac{1.262-1.079}{\sqrt{0.0414 + 0.0415}} = 0.601$$
+
+We get the two variances either by squaring the standard errors from the output or from `vcov(sub.mod0)` and `vcov(sub.mod1)`.  So, even though the effects are different, they are not statistically different from each other.  We could compare this to the result we get from the interaction model where the coefficient on `x:d1` is -0.343 and not statistically significant.  In both cases, the coefficients are not found to be statistically different from each other.  There are two reasons that the results differ from each other.  First and most importantly, the subset model also essentially interacts $z$ and any other covariates in your model with $d$.  This may or may not be what you intend.  The other difference is that the variance-covariance of the parameters in the model is $S_E^2 (\mathbf{X}^{\prime}\mathbf{X})^{-1}$.  Both the residual variance and the variance of the inner product of the design matrix will change from one subset model to the other.  So, the variance of the terms will differ, at least slightly.  
+In your note, you said that you tried this without controls, too.  Let's have a look and see what happens then.   
+
+```{r}
+int.mod1a <- lm(y1 ~ x*d , data=dat)
+sub.mod0a <- lm(y1 ~ x , data=subset(dat, d == "0"))
+sub.mod1a <- lm(y1 ~ x , data=subset(dat, d == "1"))
+stargazer(int.mod1a, sub.mod0a, sub.mod1a, type="text")
+```
+
+In this case, you can see in the interaction model, the effect of $x$ when $d=0$ is 0.459 (which is the same as the subset model) and its standard error is 0.204, which is very close to the subset model SE.  The interaction model would suggest that the coefficient of $x$ when $d=1$ is $0.459 + -0.401 =  0.058$, which is the same as the subset model, and the variance of the effect of $x$ when $d=1$ is 0.202 which is, again, very close to the subset model SE.  Using the two subset models, we find that the difference between the two coefficients is -0.401 with a standard error of $\sqrt{0.200^2 + 0.207^2} = 0.288$, which is the same as for the interaction model.  So, in fact, the subset models and the interaction model are telling almost identical stories, even though the subset models may make it seem as though there is a difference between the two models.  
+
+Now, let's consider a model where the two effects are different from each other and in this case, let's just look at the models without the covariate $z$: 
+
+```{r}
+set.seed(519)
+dat$yhat2 <-  x + I(d == "1") + 1.5*x*I(d == "1") -z 
+dat$y2 <- dat$yhat2 + rnorm(1000, 0, 2*sd(dat$yhat1))
+```
+
+We can estimate the model both ways - interaction and subset. 
+```{r}
+int.mod2 <- lm(y2 ~ x*d , data=dat)
+sub.mod0b <- lm(y2 ~ x , data=subset(dat, d == "0"))
+sub.mod1b <- lm(y2 ~ x , data=subset(dat, d == "1"))
+stargazer(int.mod2, sub.mod0b, sub.mod1b, type="text")
+```
+
+Here, we can see from the interaction model that the two different effects are: 
+
+```{r}
+DAMisc::intQualQuant(int.mod2, c("x", "d"), type="slopes", plot=FALSE)
+```
+These compare very closely to the two subset regression model results.  We can also see from the two subset regression models that the difference between the two coefficients is $1.408-0.459 = 0.95$, roughly the same value as the interaction coefficient in the interaction model.  Its standard error would be $\sqrt{.2^2 + 0.207^2} = 0.288$ which is the interaction coefficient SE in the interaction model.  Again, these two tell almost identical stories.  
